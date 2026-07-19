@@ -1,0 +1,174 @@
+# Mini Minion - Autonomous Coding Agent
+## System Documentation
+
+### Overview
+**Mini Minion** is an agentic AI system designed to autonomously resolve bugs in a codebase. It leverages a Large Language Model (LLM) as its reasoning engine, a set of specialized tools for file and system interaction, and a sandboxed Docker environment to ensure safe and isolated execution.
+
+---
+
+## 1. High-Level Design (HLD)
+
+The system is built on a modular architecture where the lifecycle of an autonomous task is managed through a structured workflow.
+
+- **Orchestration Layer**: The `main.py` entry point initializes the environment and hands off the task to the **ADK Runner**.
+- **Intelligence Layer**: The **LLM (gpt-oss-120b)** acts as the brain, processing observations and deciding on the next tool to call.
+- **Agent Layer**: A **Sequential Workflow** orchestrates two distinct agents: the **Minion Agent** (Execution) and the **Final Reporter Agent** (Summary).
+- **Execution Layer**: A **Tools Layer** translates agent decisions into shell commands executed within an isolated **Docker Sandbox**.
+
+---
+
+## 2. High-Level Architecture Diagram
+
+```mermaid
+graph TD
+    User([User]) -->|Run main.py| Main[Entry Point: main.py]
+    
+    subgraph "ADK Framework"
+        Main --> Runner[ADK Runner]
+        Runner --> Workflow[Sequential Workflow]
+    end
+
+    subgraph "Agents"
+        Workflow --> Minion[Minion Agent: Execution]
+        Workflow --> Reporter[Final Reporter: Summary]
+    end
+
+    subgraph "Reasoning"
+        Minion <--> LLM[LLM: gpt-oss-120b]
+        Reporter <--> LLM
+    end
+
+    subgraph "Execution Environment"
+        Minion --> Tools[Tools Layer]
+        Reporter --> Tools
+        Tools --> Sandbox[Docker Sandbox]
+        Sandbox -.->|Mount| Repo[(/workspace: Sample Repo)]
+    end
+```
+
+---
+
+## 3. Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant M as main.py
+    participant S as Docker Sandbox
+    participant R as ADK Runner
+    participant A as Minion Agent
+    participant L as LLM
+    participant T as Tools Layer
+
+    U->>M: python main.py "Fix bug X"
+    M->>S: Initialize Container (mount /workspace)
+    M->>R: Start ADK Session
+    R->>A: Start Workflow
+    
+    loop Agentic Reasoning Loop
+        A->>L: Provide State (files, test results)
+        L-->>A: Generate Tool Call (e.g., read_file)
+        A->>T: Execute Tool
+        T->>S: exec_run("cat file.py")
+        S-->>T: Output
+        T-->>A: Tool Observation
+    end
+
+    A->>M: Tests Pass / Task Done
+    M->>S: Destroy Container
+    M-->>U: Final PR-style Summary
+```
+
+---
+
+## 4. Component Diagram
+
+```mermaid
+classDiagram
+    class Main {
+        +init_sandbox()
+        +build_workflow()
+        +run_minion()
+    }
+
+    class ADK_Runner {
+        +run_async()
+        +detect_tool_calls()
+        +maintain_session_state()
+    }
+
+    class Minion_Agent {
+        +LLM: gpt-oss-120b
+        +Tools: read, write, search, run_tests
+        +Loop: explore -> investigate -> fix
+    }
+
+    class Final_Reporter {
+        +git_diff()
+        +run_tests()
+        +generate_summary()
+    }
+
+    class Tools_Layer {
+        +list_files()
+        +read_file()
+        +write_file()
+        +search_code()
+        +run_tests()
+    }
+
+    class Sandbox {
+        +docker_container
+        +exec(command)
+        +mount: /workspace
+    }
+
+    Main --> ADK_Runner
+    ADK_Runner --> Minion_Agent
+    Minion_Agent --> Tools_Layer
+    Final_Reporter --> Tools_Layer
+    Tools_Layer --> Sandbox
+```
+
+---
+
+## 5. Agent Loop Diagram
+
+The Minion Agent follows a strict cognitive loop to ensure systematic problem-solving.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Explore
+    Explore --> Investigate : list_files, search_code
+    Investigate --> Diagnose : read_file, run_tests
+    Diagnose --> Implement : analyze error, write_file
+    Implement --> Verify : run_tests
+    
+    Verify --> Iterate : Tests Fail
+    Iterate --> Diagnose : Analyze failure
+    
+    Verify --> Done : Tests Pass
+    Done --> [*] : Pass to Reporter
+```
+
+---
+
+## 6. Core Components Detail
+
+| Component | Responsibility |
+| :--- | :--- |
+| **main.py** | Boots the system, starts/stops Docker, and handles logging. |
+| **ADK Runner** | Orchestrates the message flow between Agents and the LLM. |
+| **Minion Agent** | The execution "muscle" (gpt-oss-120b) that performs the actual coding tasks. |
+| **Tools Layer** | Python wrappers that bridge the Agent's intent with the Sandbox environment. |
+| **Docker Sandbox** | A secure, ephemeral container containing the repo, Python, pytest, and git. |
+| **Final Reporter** | Specialized agent that creates a clean, human-readable summary of changes. |
+
+---
+
+## 7. Key Concepts
+
+- **Agentic Loop**: The "Reason → Act → Observe → Repeat" cycle allows the agent to learn from its own mistakes (e.g., failed tests) and adjust its approach.
+- **Tool Calling**: Agents don't just "chat"; they interact with the world through structured function calling.
+- **Sandbox Isolation**: Ensures that the agent's work remains within `/workspace` and does not affect the host system.
+- **Feedback-Driven Correction**: The system relies on unit tests as the ultimate source of truth for "completion."
